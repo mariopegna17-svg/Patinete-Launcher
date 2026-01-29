@@ -211,7 +211,7 @@
       speedText.textContent = speed.toFixed(1);
     }
 
-    // Simulación de datos mientras no tengamos protocolo real
+    // Simulación de datos
     let fakeSpeed = 0;
     setInterval(() => {
       fakeSpeed += (Math.random() - 0.5) * 2;
@@ -224,16 +224,15 @@
 
     async function connectScooter() {
       if (!navigator.bluetooth) {
-        alert('Tu navegador no soporta Web Bluetooth. Usa Chrome en escritorio o Android.');
+        alert('Tu navegador no soporta Web Bluetooth. Usa Chrome.');
         return;
       }
 
       try {
         log('Solicitando dispositivo BLE...');
         const device = await navigator.bluetooth.requestDevice({
-          // Ajusta esto luego al nombre real de tu patinete
-          filters: [{ namePrefix: 'Twofish' }],
-          optionalServices: [0xffe0] // Servicio genérico de ejemplo
+          acceptAllDevices: true,
+          optionalServices: [0xffe0]
         });
 
         bluetoothDevice = device;
@@ -248,22 +247,20 @@
         connectBtn.textContent = 'Conectado';
         connectBtn.classList.remove('disconnected');
 
-        log('Obteniendo servicio 0xFFE0 (ejemplo)...');
+        log('Intentando obtener servicio 0xFFE0...');
         const service = await gattServer.getPrimaryService(0xffe0);
 
-        // OJO: estos UUID son de ejemplo, luego los cambiaremos por los reales
-        log('Obteniendo characteristic de escritura 0xFFE2 (ejemplo)...');
+        log('Buscando characteristic de escritura...');
         writeCharacteristic = await service.getCharacteristic(0xffe2);
 
-        log('Obteniendo characteristic de notificación 0xFFE1 (ejemplo)...');
+        log('Buscando characteristic de notificación...');
         notifyCharacteristic = await service.getCharacteristic(0xffe1);
 
         await notifyCharacteristic.startNotifications();
         notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotification);
 
-        log('Notificaciones activadas. Esperando datos del patinete...');
+        log('Notificaciones activadas.');
       } catch (error) {
-        console.error(error);
         log('Error: ' + error);
         statusText.textContent = 'Error';
         connectBtn.textContent = 'Conectar al patinete';
@@ -275,38 +272,32 @@
     function handleNotification(event) {
       const value = event.target.value;
       const bytes = new Uint8Array(value.buffer);
-      log('Notificación recibida: ' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-      // Aquí interpretaremos los bytes reales cuando sepamos el protocolo.
-      // De momento, solo mostramos el log.
+      log('Notificación: ' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
     }
 
     async function sendModeCommand(modeIndex) {
       if (!writeCharacteristic) {
-        log('No hay characteristic de escritura disponible todavía.');
+        log('No hay characteristic de escritura.');
         return;
       }
 
-      // Comando de ejemplo tipo:
-      // 55 AA 03 [modo] 00 00 [checksum]
       const header1 = 0x55;
       const header2 = 0xAA;
       const cmdId   = 0x03;
-      const mode    = modeIndex; // 0=Eco,1=Normal,2=Sport
+      const mode    = modeIndex;
       const b4 = 0x00;
       const b5 = 0x00;
 
-      const sum = (header1 + header2 + cmdId + mode + b4 + b5) & 0xFF;
-      const checksum = sum;
+      const checksum = (header1 + header2 + cmdId + mode + b4 + b5) & 0xFF;
 
       const payload = new Uint8Array([header1, header2, cmdId, mode, b4, b5, checksum]);
 
-      log('Enviando comando modo (' + modeIndex + '): ' +
+      log('Enviando comando: ' +
           Array.from(payload).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
       try {
         await writeCharacteristic.writeValue(payload);
-        log('Comando enviado correctamente.');
+        log('Comando enviado.');
       } catch (error) {
         log('Error enviando comando: ' + error);
       }
@@ -321,7 +312,7 @@
         connectBtn.textContent = 'Conectar al patinete';
         connectBtn.classList.add('disconnected');
         connectBtn.disabled = false;
-        log('Desconectado manualmente.');
+        log('Desconectado.');
       }
     });
 
