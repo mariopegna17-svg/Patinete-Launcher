@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Panel Patinete - Prueba</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #050810;
+      color: #e5f0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      margin-top: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    .panel {
+      margin-top: 20px;
+      background: radial-gradient(circle at top, #1b2a4a, #050810);
+      border-radius: 20px;
+      padding: 20px 30px;
+      box-shadow: 0 0 30px rgba(0,0,0,0.6);
+      min-width: 320px;
+      max-width: 420px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+    }
+    .label {
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+    .value {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+    .speed {
+      font-size: 3.5rem;
+      font-weight: 700;
+      text-align: center;
+      margin: 10px 0 0;
+    }
+    .speed-unit {
+      text-align: center;
+      font-size: 0.9rem;
+      opacity: 0.7;
+      margin-bottom: 10px;
+    }
+    .battery-bar {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: #1a2335;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .battery-fill {
+      height: 100%;
+      width: 50%;
+      background: linear-gradient(90deg, #3cff9b, #f5ff3c);
+      transition: width 0.3s ease;
+    }
+    .buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 10px 8px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      background: #1b2640;
+      color: #e5f0ff;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover {
+      background: #24335a;
+    }
+    button:active {
+      transform: scale(0.97);
+    }
+    button.active {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+    #connectBtn {
+      margin-top: 20px;
+      width: 100%;
+      background: #22c55e;
+    }
+    #connectBtn.disconnected {
+      background: #ef4444;
+    }
+    #log {
+      margin-top: 15px;
+      font-size: 0.8rem;
+      max-height: 120px;
+      overflow-y: auto;
+      background: #050b16;
+      padding: 10px;
+      border-radius: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      opacity: 0.85;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pantalla Patinete - Demo HTML</h1>
+
+  <div class="panel">
+    <div class="row">
+      <div>
+        <div class="label">Batería</div>
+        <div class="value" id="batteryText">50%</div>
+        <div class="battery-bar">
+          <div class="battery-fill" id="batteryFill"></div>
+        </div>
+      </div>
+      <div>
+        <div class="label">Modo</div>
+        <div class="value" id="modeText">Normal</div>
+      </div>
+    </div>
+
+    <div class="speed" id="speedText">0</div>
+    <div class="speed-unit">km/h</div>
+
+    <div class="row">
+      <div>
+        <div class="label">Conexión</div>
+        <div class="value" id="statusText">Desconectado</div>
+      </div>
+      <div>
+        <div class="label">Nombre BLE</div>
+        <div class="value" id="deviceName">—</div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="ecoBtn">Eco</button>
+      <button id="normalBtn" class="active">Normal</button>
+      <button id="sportBtn">Sport</button>
+    </div>
+
+    <button id="connectBtn" class="disconnected">Conectar al patinete</button>
+
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const speedText   = document.getElementById('speedText');
+    const batteryText = document.getElementById('batteryText');
+    const batteryFill = document.getElementById('batteryFill');
+    const modeText    = document.getElementById('modeText');
+    const statusText  = document.getElementById('statusText');
+    const deviceName  = document.getElementById('deviceName');
+    const logBox      = document.getElementById('log');
+
+    const ecoBtn    = document.getElementById('ecoBtn');
+    const normalBtn = document.getElementById('normalBtn');
+    const sportBtn  = document.getElementById('sportBtn');
+    const connectBtn = document.getElementById('connectBtn');
+
+    let bluetoothDevice = null;
+    let gattServer = null;
+    let writeCharacteristic = null;
+    let notifyCharacteristic = null;
+
+    function log(msg) {
+      console.log(msg);
+      logBox.textContent += msg + '\n';
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function setModeUI(mode) {
+      ecoBtn.classList.remove('active');
+      normalBtn.classList.remove('active');
+      sportBtn.classList.remove('active');
+
+      if (mode === 'Eco') ecoBtn.classList.add('active');
+      if (mode === 'Normal') normalBtn.classList.add('active');
+      if (mode === 'Sport') sportBtn.classList.add('active');
+
+      modeText.textContent = mode;
+    }
+
+    function setBatteryUI(percent) {
+      const p = Math.max(0, Math.min(100, percent));
+      batteryText.textContent = p + '%';
+      batteryFill.style.width = p + '%';
+    }
+
+    function setSpeedUI(speed) {
+      speedText.textContent = speed.toFixed(1);
+    }
+
+    // Simulación de datos mientras no tengamos protocolo real
+    let fakeSpeed = 0;
+    setInterval(() => {
+      fakeSpeed += (Math.random() - 0.5) * 2;
+      fakeSpeed = Math.max(0, Math.min(25, fakeSpeed));
+      setSpeedUI(fakeSpeed);
+
+      const fakeBattery = 40 + Math.random() * 40;
+      setBatteryUI(fakeBattery);
+    }, 1000);
+
+    async function connectScooter() {
+      if (!navigator.bluetooth) {
+        alert('Tu navegador no soporta Web Bluetooth. Usa Chrome en escritorio o Android.');
+        return;
+      }
+
+      try {
+        log('Solicitando dispositivo BLE...');
+        const device = await navigator.bluetooth.requestDevice({
+          // Ajusta esto luego al nombre real de tu patinete
+          filters: [{ namePrefix: 'Twofish' }],
+          optionalServices: [0xffe0] // Servicio genérico de ejemplo
+        });
+
+        bluetoothDevice = device;
+        deviceName.textContent = device.name || 'Desconocido';
+        statusText.textContent = 'Conectando...';
+        connectBtn.textContent = 'Conectando...';
+        connectBtn.disabled = true;
+
+        log('Conectando GATT...');
+        gattServer = await device.gatt.connect();
+        statusText.textContent = 'Conectado';
+        connectBtn.textContent = 'Conectado';
+        connectBtn.classList.remove('disconnected');
+
+        log('Obteniendo servicio 0xFFE0 (ejemplo)...');
+        const service = await gattServer.getPrimaryService(0xffe0);
+
+        // OJO: estos UUID son de ejemplo, luego los cambiaremos por los reales
+        log('Obteniendo characteristic de escritura 0xFFE2 (ejemplo)...');
+        writeCharacteristic = await service.getCharacteristic(0xffe2);
+
+        log('Obteniendo characteristic de notificación 0xFFE1 (ejemplo)...');
+        notifyCharacteristic = await service.getCharacteristic(0xffe1);
+
+        await notifyCharacteristic.startNotifications();
+        notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotification);
+
+        log('Notificaciones activadas. Esperando datos del patinete...');
+      } catch (error) {
+        console.error(error);
+        log('Error: ' + error);
+        statusText.textContent = 'Error';
+        connectBtn.textContent = 'Conectar al patinete';
+        connectBtn.disabled = false;
+        connectBtn.classList.add('disconnected');
+      }
+    }
+
+    function handleNotification(event) {
+      const value = event.target.value;
+      const bytes = new Uint8Array(value.buffer);
+      log('Notificación recibida: ' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+      // Aquí interpretaremos los bytes reales cuando sepamos el protocolo.
+      // De momento, solo mostramos el log.
+    }
+
+    async function sendModeCommand(modeIndex) {
+      if (!writeCharacteristic) {
+        log('No hay characteristic de escritura disponible todavía.');
+        return;
+      }
+
+      // Comando de ejemplo tipo:
+      // 55 AA 03 [modo] 00 00 [checksum]
+      const header1 = 0x55;
+      const header2 = 0xAA;
+      const cmdId   = 0x03;
+      const mode    = modeIndex; // 0=Eco,1=Normal,2=Sport
+      const b4 = 0x00;
+      const b5 = 0x00;
+
+      const sum = (header1 + header2 + cmdId + mode + b4 + b5) & 0xFF;
+      const checksum = sum;
+
+      const payload = new Uint8Array([header1, header2, cmdId, mode, b4, b5, checksum]);
+
+      log('Enviando comando modo (' + modeIndex + '): ' +
+          Array.from(payload).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+      try {
+        await writeCharacteristic.writeValue(payload);
+        log('Comando enviado correctamente.');
+      } catch (error) {
+        log('Error enviando comando: ' + error);
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      if (!bluetoothDevice || !bluetoothDevice.gatt.connected) {
+        connectScooter();
+      } else {
+        bluetoothDevice.gatt.disconnect();
+        statusText.textContent = 'Desconectado';
+        connectBtn.textContent = 'Conectar al patinete';
+        connectBtn.classList.add('disconnected');
+        connectBtn.disabled = false;
+        log('Desconectado manualmente.');
+      }
+    });
+
+    ecoBtn.addEventListener('click', () => {
+      setModeUI('Eco');
+      sendModeCommand(0);
+    });
+
+    normalBtn.addEventListener('click', () => {
+      setModeUI('Normal');
+      sendModeCommand(1);
+    });
+
+    sportBtn.addEventListener('click', () => {
+      setModeUI('Sport');
+      sendModeCommand(2);
+    });
+  </script>
+</body>
+</html>
