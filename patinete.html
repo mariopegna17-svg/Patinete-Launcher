@@ -1,85 +1,95 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Explorador BLE</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #0a0f1a;
-      color: #e0f0ff;
-      padding: 20px;
-    }
-    h1 {
-      font-size: 1.5rem;
-      margin-bottom: 10px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 1rem;
-      border: none;
-      border-radius: 8px;
-      background: #3b82f6;
-      color: white;
-      cursor: pointer;
-    }
-    #log {
-      margin-top: 20px;
-      background: #111827;
-      padding: 15px;
-      border-radius: 10px;
-      white-space: pre-wrap;
-      font-size: 0.9rem;
-      max-height: 500px;
-      overflow-y: auto;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>TwoFish V1 Max Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    background: #000;
+    color: #00ffcc;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+.speed {
+    font-size: 96px;
+    margin-top: 40px;
+}
+.unit {
+    font-size: 20px;
+}
+.battery {
+    font-size: 22px;
+    margin-top: 20px;
+}
+button {
+    margin-top: 30px;
+    padding: 15px 30px;
+    font-size: 18px;
+    background: #00ffcc;
+    border: none;
+    border-radius: 12px;
+}
+.status {
+    margin-top: 15px;
+    color: #aaa;
+}
+</style>
 </head>
+
 <body>
-  <h1>Explorador BLE - Mostrar UUIDs</h1>
-  <button onclick="scanBLE()">Buscar dispositivo BLE</button>
-  <div id="log"></div>
 
-  <script>
-    const logBox = document.getElementById('log');
+<div class="speed" id="speed">--</div>
+<div class="unit">km/h</div>
+<div class="battery" id="battery">Batería: --%</div>
 
-    function log(msg) {
-      console.log(msg);
-      logBox.textContent += msg + '\n';
-      logBox.scrollTop = logBox.scrollHeight;
-    }
+<button onclick="connect()">Conectar TwoFish</button>
+<div class="status" id="status">Desconectado</div>
 
-    async function scanBLE() {
-      try {
-        log('Solicitando dispositivo BLE...');
+<script>
+let characteristic;
+
+// UUIDs típicos TwoFish / genéricos chinos
+const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+async function connect() {
+    try {
         const device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: []
+            filters: [{ services: [SERVICE_UUID] }]
         });
 
-        log(`Dispositivo seleccionado: ${device.name || '(sin nombre)'}`);
         const server = await device.gatt.connect();
-        log('Conectado. Obteniendo servicios...');
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
 
-        const services = await server.getPrimaryServices();
-        for (const service of services) {
-          log(`\n🔧 Servicio: ${service.uuid}`);
-          const characteristics = await service.getCharacteristics();
-          for (const char of characteristics) {
-            let props = [];
-            for (const prop in char.properties) {
-              if (char.properties[prop]) props.push(prop);
-            }
-            log(`  ↳ Characteristic: ${char.uuid}`);
-            log(`     Propiedades: ${props.join(', ') || '—'}`);
-          }
-        }
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', onData);
 
-        log('\n✅ Exploración completada.');
-      } catch (error) {
-        log('❌ Error: ' + error);
-      }
+        document.getElementById("status").innerText = "Conectado";
+    } catch (e) {
+        document.getElementById("status").innerText = "Error: " + e;
     }
-  </script>
+}
+
+function onData(event) {
+    const d = new Uint8Array(event.target.value.buffer);
+
+    /*
+      Formato habitual TwoFish:
+      d[0] + d[1] → velocidad (km/h * 10)
+      d[2]        → batería %
+    */
+
+    const speed = ((d[1] << 8) | d[0]) / 10;
+    const battery = d[2];
+
+    document.getElementById("speed").innerText = speed.toFixed(0);
+    document.getElementById("battery").innerText = "Batería: " + battery + "%";
+}
+</script>
+
 </body>
 </html>
